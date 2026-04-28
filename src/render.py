@@ -47,16 +47,20 @@ DEFAULT_CAMERAS: tuple[Camera, ...] = (
 
 @dataclass
 class RenderStyle:
-    """Knobs we want to sweep for the vision-quality study."""
+    """Knobs we want to sweep for the vision-quality study.
+
+    Note: many plausible-sounding LDView CLI flags (EdgeLines, EdgesOnly,
+    HideStuds, ConditionalEdges, Antialias, ...) are silently ignored by
+    the OSMesa build — see VERIFIED_FLAGS at the bottom of this file for
+    the (small) set that actually takes effect. The fields below correspond
+    to flags that have been verified to change pixels.
+    """
     width: int = 1024
     height: int = 1024
-    edges: bool = True               # draw black edge lines
-    conditional_edges: bool = True   # smooth edges on curved parts
-    quality_lines: int = 3           # 0..3, higher = better antialiased edges
-    background: str = "0xFFFFFF"     # hex 0xRRGGBB; e.g. 0xFFFFFF white, 0x808080 grey
-    save_alpha: bool = False         # transparent bg PNG
-    show_studs: bool = True          # LEGO logos on studs
-    seams: bool = True               # part-to-part seam lines
+    background: str = "0xFFFFFFFF"   # AARRGGBB uint32; 0xFFFFFFFF white opaque
+    save_alpha: bool = False         # transparent PNG (overrides background)
+    stud_logos: bool = True          # LEGO logo texture on studs
+    seams: bool = True               # part-to-part gap lines
     fov: float = 30.0                # perspective FOV in degrees
     # LDView's default LightVector lights only some camera angles well — at
     # lat=0 the front face goes pure-ambient and dark colors desaturate (black
@@ -75,23 +79,27 @@ def _ldview_args(model: Path, snapshot: Path, cam: Camera, style: RenderStyle) -
         f"-SaveWidth={style.width}",
         f"-SaveHeight={style.height}",
         f"-DefaultLatLong={cam.lat},{cam.lon}",
-        f"-BackgroundColor={style.background}",
+        f"-BackgroundColor3={style.background}",
         f"-FOV={style.fov}",
         f"-LightVector={style.light_vector}",
-        f"-ShowEdges={int(style.edges)}",
-        f"-ConditionalLines={int(style.conditional_edges)}",
-        f"-QualityLines={style.quality_lines}",
-        f"-DrawConditionalHighlights={int(style.conditional_edges)}",
-        f"-ShowStuds={int(style.show_studs)}",
+        f"-TextureStuds={int(style.stud_logos)}",
         f"-Seams={int(style.seams)}",
         f"-SaveAlpha={int(style.save_alpha)}",
-        # Quality flags worth always-on for spike work:
-        "-AutoCrop=0",
-        "-SaveActualSize=0",
-        "-Subsample=1",         # 2x supersampling for AA
     ]
     args.extend(style.extra)
     return args
+
+
+# Flags verified to change rendered output in LDView 4.7 OSMesa on Linux.
+# Anything else (EdgeLines, EdgesOnly, HideStuds, ConditionalEdges,
+# Antialias, AutoCrop, LineSmoothing, ...) is silently ignored from the CLI.
+VERIFIED_FLAGS = (
+    "SaveSnapshot", "SaveWidth", "SaveHeight",
+    "DefaultLatLong", "FOV",
+    "BackgroundColor3", "SaveAlpha",
+    "LightVector",
+    "TextureStuds", "Seams",
+)
 
 
 def render_one(
@@ -134,9 +142,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--out", type=Path, default=Path("out"), help="Output dir")
     p.add_argument("--width", type=int, default=1024)
     p.add_argument("--height", type=int, default=1024)
-    p.add_argument("--background", default="0xFFFFFF")
-    p.add_argument("--no-edges", action="store_true")
-    p.add_argument("--no-studs", action="store_true")
+    p.add_argument("--background", default="0xFFFFFFFF",
+                   help="AARRGGBB uint32, e.g. 0xFFFFFFFF white, 0xFF000000 black")
+    p.add_argument("--no-logos", action="store_true", help="Disable LEGO logo on studs")
+    p.add_argument("--no-seams", action="store_true", help="Disable part-to-part gap lines")
     p.add_argument("--alpha", action="store_true", help="Transparent background PNG")
     p.add_argument("--prefix", default="", help="Filename prefix for outputs")
     p.add_argument("--cameras", help="Comma-separated camera names (default: all)")
@@ -146,8 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         width=args.width,
         height=args.height,
         background=args.background,
-        edges=not args.no_edges,
-        show_studs=not args.no_studs,
+        stud_logos=not args.no_logos,
+        seams=not args.no_seams,
         save_alpha=args.alpha,
     )
     cams = DEFAULT_CAMERAS
