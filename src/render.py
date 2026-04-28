@@ -57,7 +57,13 @@ class RenderStyle:
     save_alpha: bool = False         # transparent bg PNG
     show_studs: bool = True          # LEGO logos on studs
     seams: bool = True               # part-to-part seam lines
-    fov: float = 0.1                 # very small FOV ~= telephoto/quasi-ortho
+    fov: float = 30.0                # perspective FOV in degrees
+    # LDView's default LightVector lights only some camera angles well — at
+    # lat=0 the front face goes pure-ambient and dark colors desaturate (black
+    # renders as grey). LightVector=1,1,1 puts the light upper-front-right in
+    # world space, which keeps colors saturated and black=black across all
+    # six default cameras while still giving the hero shot good depth shading.
+    light_vector: str = "1,1,1"
     extra: tuple[str, ...] = field(default_factory=tuple)  # raw passthrough flags
 
 
@@ -71,6 +77,7 @@ def _ldview_args(model: Path, snapshot: Path, cam: Camera, style: RenderStyle) -
         f"-DefaultLatLong={cam.lat},{cam.lon}",
         f"-BackgroundColor={style.background}",
         f"-FOV={style.fov}",
+        f"-LightVector={style.light_vector}",
         f"-ShowEdges={int(style.edges)}",
         f"-ConditionalLines={int(style.conditional_edges)}",
         f"-QualityLines={style.quality_lines}",
